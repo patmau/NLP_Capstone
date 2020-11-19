@@ -68,27 +68,4 @@ ggplot(meltedChar) +
 library(quanteda)
 quanteda_options(threads = 4)
 
-nlines <- c(1000, 2000, 5000, 10000, 20000)
-
-timings <- sapply(nlines, function(n) {
-    entries <- lines$news[1:n]
-    startTime <- proc.time()
-    wc <- wordcount(entries)
-    tk <- tokens(entries, remove_punct = TRUE, remove_symbols = TRUE, remove_url = TRUE)
-    ngrams <- tokens_ngrams(tk, n = 3)
-    endTime <- proc.time() - startTime
-    c(wordCount = wc, time = endTime["elapsed"], mem = object.size(ngrams) / 1024^2)
-})
-
-timings <- data.frame(wordCount = timings[1, ], time = timings[2, ], mem = timings[3, ])
-timings
-
-tplot <- ggplot(timings) +
-    geom_point(aes(x = wordCount, y = time)) +
-    geom_smooth(aes(x = wordCount, y = time), method = "lm")
-mplot <- ggplot(timings) +
-    geom_point(aes(x = wordCount, y = mem)) +
-    geom_smooth(aes(x = wordCount, y = mem), method = "lm")
-
-grid.arrange(tplot, mplot, ncol = 2)
 ```
