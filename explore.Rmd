@@ -10,13 +10,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r read files}
+library(knitr)
 
-srcDir <- "data/final/en_US"
-#srcDir <- "data/sample10"
+#srcDir <- "data/final/en_US"
+srcDir <- "data/sample10"
 src <- c(blogs = "blogs", news = "news", twitter = "twitter")
 
 lines <- sapply(src, function(s) {
-    fileName <- paste("en_US", s, "txt", sep = ".")
+#    fileName <- paste("en_US", s, "txt", sep = ".")
+    fileName <- paste("sample10.en_US", s, "txt", sep = ".")
     file <- paste(srcDir, fileName, sep = "/")
     con <- file(file, "r")
     lns <- readLines(con, skipNul = TRUE)
@@ -26,24 +28,24 @@ lines <- sapply(src, function(s) {
 
 counts <- data.frame(
     sapply(lines, function(lns) {
-        size <- object.size(lns) 
+        size <- object.size(lns) / 1024^2
         lineCount <- length(lns)
-        c(size = size, lineCount = lineCount)
+        c("Data size [MB]" = size, "Lines" = lineCount)
     }) 
 )
 
-counts$total <- rowSums(counts)
-counts
-
-```
-
-```{r character counts}
 charCounts <- sapply(lines, function(lns) {
     sapply(lns, nchar, USE.NAMES = FALSE)
 })
 
-sapply(charCounts, quantile)
-sapply(charCounts, function(c) {mean(c <= 600)})
+totalChars <- data.frame(Characters = sapply(charCounts, sum))
+
+counts <- rbind(counts, t(totalChars))
+
+counts$total <- rowSums(counts)
+kable(counts, digits = 0, format.args = list(big.mark = ' '),
+      caption = "Data size and line counts in source files")
+
 ```
 
 ```{r sample}
@@ -71,71 +73,80 @@ library(reshape2)
 library(ggplot2)
 library(gridExtra)
 
-meltedChar <- melt(charCounts, value.name = "count") %>%
-    filter(count <= 600)
+meltedChar <- melt(charCounts, value.name = "characters") %>%
+    filter(characters <= 600)
 
-meltedSample <- melt(sampleText, id.vars = "src", measure.vars = "charCount", value.name = "count") %>%
-    filter(count <= 600)
+meltedSample <- melt(sampleText, id.vars = "src", measure.vars = "charCount", value.name = "characters") %>%
+    filter(characters <= 600)
 
 ggplot(meltedChar) +
-    geom_density(aes(x = count, col = L1)) +
-    geom_density(data = meltedSample, aes(x = count, col = src), linetype = 2)
+    geom_density(aes(x = characters, col = L1)) +
+    geom_density(data = meltedSample, aes(x = characters, col = src), linetype = 2) +
+    scale_color_discrete(name = "Source") +
+    ggtitle("Density plot of characters per entry")
+  
 ```
 
-```{r tokenize, message=FALSE}
+```{r tokenize, message=FALSE, eval=FALSE}
 library(quanteda)
 quanteda_options(threads = 2)
 
-tokens <- tokens(sampleText$txt, 
+tokens_all <- tokens(sampleText$txt,
                  remove_punct = TRUE,
                  remove_symbols = TRUE,
                  remove_numbers = TRUE,
                  remove_url = TRUE)
 
+tokens_nosw <- tokens_remove(tokens_all, stopwords("english"))
 ```
 
-```{r unigrams}
+```{r frequencyplot, eval=FALSE}
+topfreq <- function(tokens, ntop) {
+    dfm <- dfm(tokens)
+    textstat_frequency(dfm)[1:ntop, ]
+}
 
-dfm.uni <- dfm(tokens)
-dfmsw.uni <- dfm(tokens, remove = stopwords("english"))
-topfreq.uni <- textstat_frequency(dfm.uni)[1:20, ]
-topfreqsw.uni <- textstat_frequency(dfmsw.uni)[1:20, ]
-rm(list = c("dfm.uni", "dfmsw.uni"))
+freqPlot <- function(tokens, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
+    tf <- topfreq(tokens, ntop)
+    ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
+        geom_col() +
+        xlab(xlab) + ylab(ylab) +
+        labs(title = title) +
+        coord_flip()
+}
+```
 
-uniplot <- ggplot(topfreq.uni, aes(x = reorder(feature, frequency), y = frequency)) +
-    geom_col() +
-    xlab("Word (unigram)") + ylab("Count") +
-    coord_flip()
-swplot <- ggplot(topfreqsw.uni, aes(x = reorder(feature, frequency), y = frequency)) +
-    geom_col() +
-    xlab("Word (unigram)") + ylab("Count") +
-    coord_flip()
+```{r unigrams, eval=FALSE}
+
+uniplot <- freqPlot(tokens_all, 20, xlab = "Word (unigram)", title = "Including stopwords")
+swplot <- freqPlot(tokens_nosw, 20, xlab = "Word (unigram)", title = "Excluding stopwords")
 grid.arrange(uniplot, swplot, ncol = 2)
 
 ```
 
-```{r bigrams}
-tk.bi <- tokens_ngrams(tokens, n = 2, concatenator = " ")
-dfm.bi <- dfm(tk.bi)
-topfreq.bi <- textstat_frequency(dfm.bi)[1:20, ]
-rm(list = "tk.bi", "dfm.bi")
+```{r bigrams, eval=FALSE}
 
-ggplot(topfreq.bi, aes(x = reorder(feature, frequency), y = frequency)) +
-    geom_col() +
-    xlab("Bigrams") + ylab("Count") +
-    coord_flip()
+tk.bi <- tokens_ngrams(tokens_all, n = 2, concatenator = " ")
+biplot <- freqPlot(tk.bi, 20, xlab = "Bigram", title = "Including stopwords")
+rm(list = "tk.bi")
 
+tksw.bi <- tokens_ngrams(tokens_nosw, n = 2, concatenator = " ")
+swplot <- freqPlot(tksw.bi, 20, xlab = "Bigram", title = "Excluding stopwords")
+rm(list = "tksw.bi")
+
+grid.arrange(biplot, swplot, ncol = 2)
 ```
 
-```{r trigrams}
-tk.tri <- tokens_ngrams(tokens, n = 3, concatenator = " ")
-dfm.tri <- dfm(tk.tri)
-topfreq.tri <- textstat_frequency(dfm.tri)[1:20, ]
-rm(list = "tk.tri", "dfm.tri")
+```{r trigrams, eval=FALSE}
 
-ggplot(topfreq.tri, aes(x = reorder(feature, frequency), y = frequency)) +
-    geom_col() +
-    xlab("Trigrams") + ylab("Count") +
-    coord_flip()
+tk.tri <- tokens_ngrams(tokens_all, n = 3, concatenator = " ")
+triplot <- freqPlot(tk.tri, 20, xlab = "Trigram", title = "Including stopwords")
+rm(list = "tk.tri")
+
+tksw.tri <- tokens_ngrams(tokens_nosw, n = 3, concatenator = " ")
+swplot <- freqPlot(tksw.tri, 20, xlab = "Trigram", title = "Excluding stopwords")
+rm(list = "tksw.tri")
+
+grid.arrange(triplot, swplot, ncol = 2)
 
 ```
