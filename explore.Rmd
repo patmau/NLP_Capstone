@@ -110,13 +110,15 @@ tokens_nosw <- tokens_remove(tokens_all, stopwords("english"))
 ```
 
 ```{r frequencyplot, eval=TRUE}
-topfreq <- function(tokens, ntop) {
-    dfm <- dfm(tokens)
-    textstat_frequency(dfm)[1:ntop, ]
+token_freq <- function(tokens) {
+  dfm <- dfm(tokens)
+  freq <- textstat_frequency(dfm)
+  freq$cumulFreq <- cumsum(freq$frequency)
+  freq
 }
 
 freqPlot <- function(tokens, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
-    tf <- topfreq(tokens, ntop)
+    tf <- token_freq(tokens)[1:ntop, ]
     ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
         geom_col() +
         xlab(xlab) + ylab(ylab) +
