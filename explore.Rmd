@@ -14,6 +14,7 @@ library(reshape2)
 library(ggplot2)
 library(gridExtra)
 library(quanteda)
+library(ngram)
 quanteda_options(threads = 2)
 
 ```
@@ -21,18 +22,25 @@ quanteda_options(threads = 2)
 ## Introduction
 
 The ultimate goal in this capstone project is to create a shiny app for the predictive modeling of English text. The raw data to create the model was provided by the company [SwiftKey](http://swiftkey.com), which was purchased by Microsoft in 2016. The raw data contains text collected from blog posts, tweets, and news articles, and was downloaded from [here](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip).
-It contains text in English, German, Russian, and Finnish, but we will restrict ourselves to the English language in this project.
+
+In this report, we describe a first exploratory analysis of the raw data. The data contains text in English, German, Russian, and Finnish, but we will restrict ourselves to the English language in this project.
 
 
+## Data size
+
+Text is provided in three text files corresponding to the sources of the text (Twitter, blogs, news). Each line in a file corresponds to an entry in the respective source (e.g., a tweet or a blog post).
+In a first step, we look at the size of the data. The table below lists file sizes, memory used to store the data in memory, the number of entries in each file and the number of characters.
 
 ```{r read files}
+
+# read files and compute file sizes and number of entries/characters
 
 #srcDir <- "data/final/en_US"
 srcDir <- "data/sample10"
 src <- c(blogs = "blogs", news = "news", twitter = "twitter")
 
 files <- sapply(src, function(s) {
-  #    fileName <- paste("en_US", s, "txt", sep = ".")
+#      fileName <- paste("en_US", s, "txt", sep = ".")
     fileName <- paste("sample10.en_US", s, "txt", sep = ".")
     paste(srcDir, fileName, sep = "/")
 })
@@ -40,8 +48,6 @@ files <- sapply(src, function(s) {
 fileSizes <- data.frame("File size [MB]" = sapply(src, function(s) {
   file.size(files[s]) / 1024 ^ 2
 }), check.names = FALSE)
-
-fileSizes
 
 lines <- sapply(src, function(s) {
     con <- file(files[s], "r")
@@ -54,7 +60,7 @@ counts <- data.frame(
     sapply(lines, function(lns) {
         size <- object.size(lns) / 1024^2
         lineCount <- length(lns)
-        c("Data size [MB]" = size, "Lines" = lineCount)
+        c("Data size [MB] in memory" = size, "Entries" = lineCount)
     }) 
 )
 
@@ -68,12 +74,25 @@ counts <- rbind(t(fileSizes), counts, t(totalChars))
 
 counts$total <- rowSums(counts)
 kable(counts, digits = 0, format.args = list(big.mark = ' '),
-      caption = "Data size and line counts in source files")
+      caption = "Data size and number of entries and characters in source files")
 
 ```
 
-```{r sample}
+All three source files contain a similar total amount of data, although the Twitter file contains roughly twice as many entries as the other two files (tweets tend to be shorter than blog posts or news articles, see below).
+The total amount of data is `r round(counts$total[2])` MB in memory. 
 
+
+## Sample the data
+
+The complete raw data set is rather large, and it turns out that the memory requirement for tokenization of the complete data set exceeds what is available on the laptop used for this analysis (8 GB).
+Therefore, further analysis will be performed on a subset constructed by randomly sampling 10% of all entries from each source file. 
+
+The figure below compares the distributions of the length of entries (number of characters) in the various sources. Solid lines represent the complete raw data, and dashed lines represent sampled data.
+
+```{r sample}
+# sample raw data
+
+set.seed(2020)
 samples <- sapply(lines, function(lns) {
     sample(lns, length(lns) / 10, replace = FALSE)
 })
@@ -92,7 +111,9 @@ rm(list = c("lines", "samples"))
 ```
 
 ```{r graphs, message = FALSE}
+# density plots
 
+# convert to long format for ggplot
 meltedChar <- melt(charCounts, value.name = "characters") %>%
     filter(characters <= 600)
 
@@ -106,6 +127,11 @@ ggplot(meltedChar) +
     ggtitle("Density plot of characters per entry")
   
 ```
+
+It is obvious from the plot that Twitter was sourced at a time when tweets were still limited to 140 characters. Blog posts and news articles show a broader distribution of the length of entries. 
+The plot also shows that the data sample adequately represents the full set in terms of the length of entries (which could be used as a crude measure of complexity of a text). 
+
+## N-grams
 
 ```{r tokenize, message=FALSE, eval=TRUE}
 tokens_all <- tokens(sampleText$txt,
@@ -174,6 +200,8 @@ minIdx_nonStopword <- min(which(!(tk_freq.uni$feature %in% stopwords("english"))
 ```
 
 The first non-stopword is "`r tk_freq.uni$feature[minIdx_nonStopword]`" at position `r minIdx_nonStopword` or `r tk_freq.uni$rank[minIdx_nonStopword]`.
+
+
 
 ```{r bigrams, eval=FALSE}
 
