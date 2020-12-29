@@ -1,16 +1,31 @@
 ---
-title: "Explore"
+title: "Data Science Capstone - Exploratory Data Analysis"
 author: "patmau"
-date: "11/16/2020"
+date: "Dec 29, 2020"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(knitr)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(gridExtra)
+library(quanteda)
+quanteda_options(threads = 2)
+
 ```
 
+## Introduction
+
+The ultimate goal in this capstone project is to create a shiny app for the predictive modeling of English text. The raw data to create the model was provided by the company [SwiftKey](http://swiftkey.com), which was purchased by Microsoft in 2016. The raw data contains text collected from blog posts, tweets, and news articles, and was downloaded from [here](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip).
+It contains text in English, German, Russian, and Finnish, but we will restrict ourselves to the English language in this project.
+
+
+
 ```{r read files}
-library(knitr)
 
 #srcDir <- "data/final/en_US"
 srcDir <- "data/sample10"
@@ -77,10 +92,6 @@ rm(list = c("lines", "samples"))
 ```
 
 ```{r graphs, message = FALSE}
-library(dplyr)
-library(reshape2)
-library(ggplot2)
-library(gridExtra)
 
 meltedChar <- melt(charCounts, value.name = "characters") %>%
     filter(characters <= 600)
@@ -97,9 +108,6 @@ ggplot(meltedChar) +
 ```
 
 ```{r tokenize, message=FALSE, eval=TRUE}
-library(quanteda)
-quanteda_options(threads = 2)
-
 tokens_all <- tokens(sampleText$txt,
                  remove_punct = TRUE,
                  remove_symbols = TRUE,
@@ -117,6 +125,16 @@ token_freq <- function(tokens) {
   freq
 }
 
+freqPlot2 <- function(tk_freq, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
+    tf <- tk_freq[1:ntop, ]
+    ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
+        geom_col() +
+        xlab(xlab) + ylab(ylab) +
+        labs(title = title) +
+        coord_flip()
+}
+
+
 freqPlot <- function(tokens, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
     tf <- token_freq(tokens)[1:ntop, ]
     ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
@@ -128,14 +146,36 @@ freqPlot <- function(tokens, ntop, xlab = "n-gram", ylab = "Count", title = NULL
 ```
 
 ```{r unigrams, eval=TRUE}
+tk_freq.uni <- token_freq(tokens_all)
+uniplot.fr <- freqPlot2(tk_freq.uni, 20, xlab = "Word (unigram)", title = "Including stopwords")
 
-uniplot <- freqPlot(tokens_all, 20, xlab = "Word (unigram)", title = "Including stopwords")
-noswplot <- freqPlot(tokens_nosw, 20, xlab = "Word (unigram)", title = "Excluding stopwords")
-grid.arrange(uniplot, noswplot, ncol = 2)
+tk_freq.uni.nosw <- token_freq(tokens_nosw)
+noswplot.fr <- freqPlot2(tk_freq.uni.nosw, 20, xlab = "Word (unigram)", title = "Excluding stopwords")
 
+grid.arrange(uniplot.fr, noswplot.fr, ncol = 2)
+
+ggplot(tk_freq.uni) +
+  geom_line(aes(x = 1:length(cumulFreq), y = cumulFreq)) +
+  geom_hline(yintercept = (0.9 * tail(tk_freq.uni$cumulFreq, 1)), col = "blue", linetype = "dashed") +
+  ylab("Cumulative Frequency") + xlab("Token index (from most to least occurring)")
+
+totalTokens <- tail(tk_freq.uni$cumulFreq, 1)
+totalTokens
+
+minFreqIdx <- min(which(tk_freq.uni$cumulFreq > 0.9 * totalTokens))
+minFreq <- tk_freq.uni$frequency[minFreqIdx]
+
+cutIdx <- min(which(tk_freq.uni$frequency < minFreq))
+tk_freq.uni[(cutIdx - 5) : (cutIdx + 5), ]
 ```
 
-```{r bigrams, eval=TRUE}
+```{r nonStopword, eval = TRUE}
+minIdx_nonStopword <- min(which(!(tk_freq.uni$feature %in% stopwords("english"))))
+```
+
+The first non-stopword is "`r tk_freq.uni$feature[minIdx_nonStopword]`" at position `r minIdx_nonStopword` or `r tk_freq.uni$rank[minIdx_nonStopword]`.
+
+```{r bigrams, eval=FALSE}
 
 tk.bi <- tokens_ngrams(tokens_all, n = 2, concatenator = " ")
 biplot <- freqPlot(tk.bi, 20, xlab = "Bigram", title = "Including stopwords")
@@ -148,7 +188,7 @@ rm(list = "tknosw.bi")
 grid.arrange(biplot, noswplot, ncol = 2)
 ```
 
-```{r trigrams, eval=TRUE}
+```{r trigrams, eval=FALSE}
 
 tk.tri <- tokens_ngrams(tokens_all, n = 3, concatenator = " ")
 triplot <- freqPlot(tk.tri, 20, xlab = "Trigram", title = "Including stopwords")
