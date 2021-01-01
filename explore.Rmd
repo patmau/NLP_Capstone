@@ -87,7 +87,7 @@ The total amount of data is `r round(counts$total[2])` MB in memory.
 The complete raw data set is rather large, and it turns out that the memory requirement for tokenization of the complete data set exceeds what is available on the laptop used for this analysis (8 GB).
 Therefore, further analysis will be performed on a subset constructed by randomly sampling 10% of all entries from each source file. 
 
-The figure below compares the distributions of the length of entries (number of characters) in the various sources. Solid lines represent the complete raw data, and dashed lines represent sampled data.
+The figure below compares the distributions of the length of entries (number of characters) in the various sources. Solid lines represent the complete data set, dashed lines represent sampled data.
 
 ```{r sample}
 # sample raw data
@@ -111,7 +111,7 @@ rm(list = c("lines", "samples"))
 ```
 
 ```{r graphs, message = FALSE}
-# density plots
+# character density plots
 
 # convert to long format for ggplot
 meltedChar <- melt(charCounts, value.name = "characters") %>%
@@ -131,9 +131,14 @@ ggplot(meltedChar) +
 It is obvious from the plot that Twitter was sourced at a time when tweets were still limited to 140 characters. Blog posts and news articles show a broader distribution of the length of entries. 
 The plot also shows that the data sample adequately represents the full set in terms of the length of entries (which could be used as a crude measure of complexity of a text). 
 
-## N-grams
+## Words
+
+We use the [quanteda package](http://quanteda.io) to tokenize text. For an initial analysis, we restrict ourselves to words, and remove punctuation characters, symbols, numbers, URLs, etc., from the text. Also, all text is converted to lower case.
+Tokenization is performed once including [stop words](https://en.wikipedia.org/wiki/Stop_word), and a second time excluding all stop words.
 
 ```{r tokenize, message=FALSE, eval=TRUE}
+# tokenize 
+
 tokens_all <- tokens(sampleText$txt,
                  remove_punct = TRUE,
                  remove_symbols = TRUE,
@@ -144,6 +149,8 @@ tokens_nosw <- tokens_remove(tokens_all, stopwords("english"))
 ```
 
 ```{r frequencyplot, eval=TRUE}
+# functions for computing/plotting token frequencies
+
 token_freq <- function(tokens) {
   dfm <- dfm(tokens)
   freq <- textstat_frequency(dfm)
@@ -151,7 +158,7 @@ token_freq <- function(tokens) {
   freq
 }
 
-freqPlot2 <- function(tk_freq, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
+freqPlot <- function(tk_freq, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
     tf <- tk_freq[1:ntop, ]
     ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
         geom_col() +
@@ -160,71 +167,76 @@ freqPlot2 <- function(tk_freq, ntop, xlab = "n-gram", ylab = "Count", title = NU
         coord_flip()
 }
 
-
-freqPlot <- function(tokens, ntop, xlab = "n-gram", ylab = "Count", title = NULL) {
-    tf <- token_freq(tokens)[1:ntop, ]
-    ggplot(tf, aes(x = reorder(feature, frequency), y = frequency)) +
-        geom_col() +
-        xlab(xlab) + ylab(ylab) +
-        labs(title = title) +
-        coord_flip()
-}
 ```
 
 ```{r unigrams, eval=TRUE}
-tk_freq.uni <- token_freq(tokens_all)
-uniplot.fr <- freqPlot2(tk_freq.uni, 20, xlab = "Word (unigram)", title = "Including stopwords")
+# unigrams
 
-tk_freq.uni.nosw <- token_freq(tokens_nosw)
-noswplot.fr <- freqPlot2(tk_freq.uni.nosw, 20, xlab = "Word (unigram)", title = "Excluding stopwords")
+tkfreq.uni <- token_freq(tokens_all)
+uniplot.fr <- freqPlot(tkfreq.uni, 20, xlab = "Word (unigram)", title = "Including stopwords")
 
-grid.arrange(uniplot.fr, noswplot.fr, ncol = 2)
+tkfreq.uni.nosw <- token_freq(tokens_nosw)
+noswplot.fr <- freqPlot(tkfreq.uni.nosw, 20, xlab = "Word (unigram)", title = "Excluding stopwords")
 
-ggplot(tk_freq.uni) +
+totalTokens <- tail(tkfreq.uni$cumulFreq, 1)
+
+nTokens <- dim(tkfreq.uni)[1]
+
+stopwordCumulFreq <- sum(tkfreq.uni$frequency[tkfreq.uni$feature %in% stopwords("english")])
+nOccurOnce <- sum(tkfreq.uni$frequency == 1)
+
+minIdx_nonStopword <- min(which(!(tkfreq.uni$feature %in% stopwords("english"))))
+```
+
+The corpus contains a total of `r format(totalTokens, big.mark=" ")` words, composed from `r format(nTokens, big.mark=" ")` unique words.
+From these unique words, `r format(nOccurOnce, big.mark=" ")` (`r round(100.0 * nOccurOnce/nTokens)`%) appear only once.
+They account for `r round(100.0 * nOccurOnce / totalTokens)`% of all words in the corpus.
+
+
+```{r unigramPlots, eval=TRUE}
+grid.arrange(uniplot.fr, noswplot.fr, ncol = 2, top = "Most Frequent Words")
+
+ggplot(tkfreq.uni) +
   geom_line(aes(x = 1:length(cumulFreq), y = cumulFreq)) +
-  geom_hline(yintercept = (0.9 * tail(tk_freq.uni$cumulFreq, 1)), col = "blue", linetype = "dashed") +
+  geom_hline(yintercept = (0.9 * tail(tkfreq.uni$cumulFreq, 1)), col = "blue", linetype = "dashed") +
   ylab("Cumulative Frequency") + xlab("Token index (from most to least occurring)")
-
-totalTokens <- tail(tk_freq.uni$cumulFreq, 1)
-totalTokens
-
-minFreqIdx <- min(which(tk_freq.uni$cumulFreq > 0.9 * totalTokens))
-minFreq <- tk_freq.uni$frequency[minFreqIdx]
-
-cutIdx <- min(which(tk_freq.uni$frequency < minFreq))
-tk_freq.uni[(cutIdx - 5) : (cutIdx + 5), ]
 ```
 
-```{r nonStopword, eval = TRUE}
-minIdx_nonStopword <- min(which(!(tk_freq.uni$feature %in% stopwords("english"))))
-```
-
-The first non-stopword is "`r tk_freq.uni$feature[minIdx_nonStopword]`" at position `r minIdx_nonStopword` or `r tk_freq.uni$rank[minIdx_nonStopword]`.
-
+The first non-stop word is "`r tkfreq.uni$feature[minIdx_nonStopword]`" at position `r minIdx_nonStopword`.
+Stopwords account for `r round(100.0 * stopwordCumulFreq / totalTokens)`% of all tokens.
 
 
 ```{r bigrams, eval=FALSE}
 
 tk.bi <- tokens_ngrams(tokens_all, n = 2, concatenator = " ")
-biplot <- freqPlot(tk.bi, 20, xlab = "Bigram", title = "Including stopwords")
+tkfreq.bi <- token_freq(tk.bi)
+biplot <- freqPlot(tkfreq.bi, 20, xlab = "Bigram", title = "Including stopwords")
 rm(list = "tk.bi")
 
-tknosw.bi <- tokens_ngrams(tokens_nosw, n = 2, concatenator = " ")
-noswplot <- freqPlot(tknosw.bi, 20, xlab = "Bigram", title = "Excluding stopwords")
-rm(list = "tknosw.bi")
+tk.nosw.bi <- tokens_ngrams(tokens_nosw, n = 2, concatenator = " ")
+tkfreq.nosw.bi <- token_freq(tk.nosw.bi)
+noswplot <- freqPlot(tkfreq.nosw.bi, 20, xlab = "Bigram", title = "Excluding stopwords")
+rm(list = "tk.nosw.bi")
 
 grid.arrange(biplot, noswplot, ncol = 2)
+
+ggplot(tkfreq.bi) +
+  geom_line(aes(x = 1:length(cumulFreq), y = cumulFreq)) +
+  ylab("Cumulative Frequency") + xlab("2-gram index (from most to least occurring)")
+
 ```
 
 ```{r trigrams, eval=FALSE}
 
 tk.tri <- tokens_ngrams(tokens_all, n = 3, concatenator = " ")
-triplot <- freqPlot(tk.tri, 20, xlab = "Trigram", title = "Including stopwords")
+tkfreq.tri <- token_freq(tk.tri)
+triplot <- freqPlot(tkfreq.tri, 20, xlab = "Trigram", title = "Including stopwords")
 rm(list = "tk.tri")
 
-tknosw.tri <- tokens_ngrams(tokens_nosw, n = 3, concatenator = " ")
-noswplot <- freqPlot(tknosw.tri, 20, xlab = "Trigram", title = "Excluding stopwords")
-rm(list = "tknosw.tri")
+tk.nosw.tri <- tokens_ngrams(tokens_nosw, n = 3, concatenator = " ")
+tkfreq.nosw.tri <- token_freq(tk.nosw.tri)
+noswplot <- freqPlot(tkfreq.nosw.tri, 20, xlab = "Trigram", title = "Excluding stopwords")
+rm(list = "tk.nosw.tri")
 
 grid.arrange(triplot, noswplot, ncol = 2)
 
