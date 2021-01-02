@@ -1,5 +1,5 @@
 ---
-title: "Data Science Capstone - Exploratory Data Analysis"
+title: "Data Science Capstone - Milestone Report"
 author: "patmau"
 date: "Dec 29, 2020"
 output: html_document
@@ -14,7 +14,7 @@ library(reshape2)
 library(ggplot2)
 library(gridExtra)
 library(quanteda)
-library(ngram)
+library(formattable)
 quanteda_options(threads = 2)
 
 ```
@@ -94,7 +94,7 @@ The figure below compares the distributions of the length of entries (number of 
 
 set.seed(2020)
 samples <- sapply(lines, function(lns) {
-    sample(lns, length(lns) / 10, replace = FALSE)
+    sample(lns, length(lns) / 20, replace = FALSE)
 })
 
 sampleText <- rbind(
@@ -126,15 +126,16 @@ ggplot(meltedChar) +
     scale_color_discrete(name = "Source") +
     ggtitle("Density plot of characters per entry")
   
+print(object.size(meltedChar), units = "MB")
 ```
 
 It is obvious from the plot that Twitter was sourced at a time when tweets were still limited to 140 characters. Blog posts and news articles show a broader distribution of the length of entries. 
-The plot also shows that the data sample adequately represents the full set in terms of the length of entries (which could be used as a crude measure of complexity of a text). 
+The plot also shows that the data sample adequately represents the full set in terms of the length of entries (which can be used as a crude measure of complexity of a text). 
 
 ## Words
 
-We use the [quanteda package](http://quanteda.io) to tokenize text. For an initial analysis, we restrict ourselves to words, and remove punctuation characters, symbols, numbers, URLs, etc., from the text. Also, all text is converted to lower case.
-Tokenization is performed once including [stop words](https://en.wikipedia.org/wiki/Stop_word), and a second time excluding all stop words.
+We use the [quanteda package](http://quanteda.io) to tokenize the text corpus. For an initial analysis, we restrict ourselves to words and remove punctuation characters, symbols, numbers, URLs, etc., from the corpus. Also, all text is converted to lower case.
+Tokenization is performed once including [stop words](https://en.wikipedia.org/wiki/Stop_word), and a second time excluding all stop words (the list of stop words used can be found in the appendix).
 
 ```{r tokenize, message=FALSE, eval=TRUE}
 # tokenize 
@@ -146,6 +147,10 @@ tokens_all <- tokens(sampleText$txt,
                  remove_url = TRUE)
 
 tokens_nosw <- tokens_remove(tokens_all, stopwords("english"))
+
+print(object.size(tokens_all), units = "MB")
+print(object.size(tokens_nosw), units = "MB")
+
 ```
 
 ```{r frequencyplot, eval=TRUE}
@@ -167,6 +172,22 @@ freqPlot <- function(tk_freq, ntop, xlab = "n-gram", ylab = "Count", title = NUL
         coord_flip()
 }
 
+# corpus coverage
+corpusCoverage <- function(tk_freq) {
+  nTotal <- tail(tk_freq$cumulFreq, 1)
+  nUnique <- length(tk_freq$cumulFreq)
+  cover <- c(0.5, 0.8, 0.9, 0.95)
+  data.frame(cover = cover, percentage = sapply(cover, function(c) {
+    idx <- min(which(tk_freq$cumulFreq >= c * nTotal))
+    idx / nUnique
+  }))
+}
+
+# fraction of n-grams that occur only once
+onceFraction <- function(tk_freq) {
+  sum(tk_freq$frequency == 1) / length(tk_freq$frequency)
+}
+
 ```
 
 ```{r unigrams, eval=TRUE}
@@ -186,58 +207,95 @@ stopwordCumulFreq <- sum(tkfreq.uni$frequency[tkfreq.uni$feature %in% stopwords(
 nOccurOnce <- sum(tkfreq.uni$frequency == 1)
 
 minIdx_nonStopword <- min(which(!(tkfreq.uni$feature %in% stopwords("english"))))
+
+corpusCov.uni <- corpusCoverage(tkfreq.uni)
+onceFrac.uni <- onceFraction(tkfreq.uni)
+
+print(object.size(tkfreq.uni), units = "MB")
+print(object.size(uniplot.fr), units = "MB")
 ```
 
 The corpus contains a total of `r format(totalTokens, big.mark=" ")` words, composed from `r format(nTokens, big.mark=" ")` unique words.
-From these unique words, `r format(nOccurOnce, big.mark=" ")` (`r round(100.0 * nOccurOnce/nTokens)`%) appear only once.
-They account for `r round(100.0 * nOccurOnce / totalTokens)`% of all words in the corpus.
+From these unique words, `r format(nOccurOnce, big.mark=" ")` (`r percent(onceFrac.uni, digits=1)`) appear only once.
+Since they account for only `r percent(nOccurOnce/totalTokens, digits=1)` of all words in the corpus, they will not be used for text prediction, which reduces the size of the predictive model significantly.
 
+The figure below shows the 20 most frequent words in the corpus.
 
-```{r unigramPlots, eval=TRUE}
+```{r unigramPlot, eval=TRUE}
+# plot unigrams
 grid.arrange(uniplot.fr, noswplot.fr, ncol = 2, top = "Most Frequent Words")
-
-ggplot(tkfreq.uni) +
-  geom_line(aes(x = 1:length(cumulFreq), y = cumulFreq)) +
-  geom_hline(yintercept = (0.9 * tail(tkfreq.uni$cumulFreq, 1)), col = "blue", linetype = "dashed") +
-  ylab("Cumulative Frequency") + xlab("Token index (from most to least occurring)")
 ```
 
-The first non-stop word is "`r tkfreq.uni$feature[minIdx_nonStopword]`" at position `r minIdx_nonStopword`.
-Stopwords account for `r round(100.0 * stopwordCumulFreq / totalTokens)`% of all tokens.
+Not surprisingly, the most frequent words are all stop words.
+In fact, the `r length(stopwords("english"))` stop words account for `r percent(stopwordCumulFreq / totalTokens, digits = 1)` of all words in the corpus.
+The first non-stop word, "`r tkfreq.uni$feature[minIdx_nonStopword]`", is ranked at position `r minIdx_nonStopword`.
 
 
-```{r bigrams, eval=FALSE}
+## Bi- and Trigrams
+
+The plot below displays the 20 most frequent Bi- and Trigrams.
+
+```{r bi-tri-grams, eval=TRUE}
+# Bi- and trigrams
 
 tk.bi <- tokens_ngrams(tokens_all, n = 2, concatenator = " ")
 tkfreq.bi <- token_freq(tk.bi)
-biplot <- freqPlot(tkfreq.bi, 20, xlab = "Bigram", title = "Including stopwords")
-rm(list = "tk.bi")
+biplot <- freqPlot(tkfreq.bi, 20, xlab = "", title = "Bigrams")
 
-tk.nosw.bi <- tokens_ngrams(tokens_nosw, n = 2, concatenator = " ")
-tkfreq.nosw.bi <- token_freq(tk.nosw.bi)
-noswplot <- freqPlot(tkfreq.nosw.bi, 20, xlab = "Bigram", title = "Excluding stopwords")
-rm(list = "tk.nosw.bi")
+corpusCov.bi <- corpusCoverage(tkfreq.bi)
+onceFrac.bi <- onceFraction(tkfreq.bi)
 
-grid.arrange(biplot, noswplot, ncol = 2)
-
-ggplot(tkfreq.bi) +
-  geom_line(aes(x = 1:length(cumulFreq), y = cumulFreq)) +
-  ylab("Cumulative Frequency") + xlab("2-gram index (from most to least occurring)")
-
-```
-
-```{r trigrams, eval=FALSE}
+print(object.size(tkfreq.bi), units = "MB")
+print(object.size(tk.bi), units = "MB")
+rm(list = c("tk.bi", "tkfreq.bi"))
 
 tk.tri <- tokens_ngrams(tokens_all, n = 3, concatenator = " ")
 tkfreq.tri <- token_freq(tk.tri)
-triplot <- freqPlot(tkfreq.tri, 20, xlab = "Trigram", title = "Including stopwords")
-rm(list = "tk.tri")
+triplot <- freqPlot(tkfreq.tri, 20, xlab = "", title = "Trigrams")
 
-tk.nosw.tri <- tokens_ngrams(tokens_nosw, n = 3, concatenator = " ")
-tkfreq.nosw.tri <- token_freq(tk.nosw.tri)
-noswplot <- freqPlot(tkfreq.nosw.tri, 20, xlab = "Trigram", title = "Excluding stopwords")
-rm(list = "tk.nosw.tri")
+corpusCov.tri <- corpusCoverage(tkfreq.tri)
+onceFrac.tri <- onceFraction(tkfreq.tri)
 
-grid.arrange(triplot, noswplot, ncol = 2)
+print(object.size(tkfreq.tri), units = "MB")
+rm(list = c("tk.tri", "tkfreq.tri"))
+
+grid.arrange(biplot, triplot, ncol = 2, top = "2- and 3-grams including stop words")
+```
+
+It is interesting to observe that the most frequent bigrams are composed entirely from stop words.
+Many of the trigrams, on the other hand, contain one (e.g., "thanks for the") or even two ("the first time") non-stop words. 
+It remains to be seen if this feature of trigrams can be exploited in the predictive model.
+
+## Corpus coverage by n-grams
+
+We have seen above that in the case of 1-grams, stop words alone cover close to half of all words in the corpus.
+On the other hand, `r percent(onceFrac.uni, digits=1)` of 1-grams occur only once.
+For bi- and trigrams, the situation is very different. 
+The fraction of 2-grams that occur once is `r percent(onceFrac.bi,digits=1)`, and rises to `r percent(onceFrac.tri, digits=1)` with 3-grams.
+This also means that the most frequent 2- and 3-grams cover a much smaller fraction of the corpus.
+
+The table below shows which fraction of unique n-grams are needed to cover a given percentage of the corpus.
+
+```{r corpusCoverage, eval=TRUE}
+kable_df <- data.frame(percent(corpusCov.uni$cover, digits = 0),
+                       percent(corpusCov.uni$percentage, digits = 1),
+                       percent(corpusCov.bi$percentage, digits = 1),
+                       percent(corpusCov.tri$percentage, digits = 1)
+)
+
+kable(kable_df,
+   col.names = c("Corpus coverage", "1-grams", "2-grams", "3-grams")
+ )
 
 ```
+
+## Appendix
+
+### Stop words
+
+```{r stopwords}
+sort(stopwords("english"))
+```
+
+
+### R code
