@@ -1,12 +1,12 @@
 ---
 title: "Data Science Capstone - Milestone Report"
 author: "patmau"
-date: "Dec 29, 2020"
+date: "Jan 3, 2021"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 
 library(knitr)
 library(dplyr)
@@ -23,7 +23,7 @@ quanteda_options(threads = 2)
 
 The ultimate goal in this capstone project is to create a shiny app for the predictive modeling of English text. The raw data to create the model was provided by the company [SwiftKey](http://swiftkey.com), which was purchased by Microsoft in 2016. The raw data contains text collected from blog posts, tweets, and news articles, and was downloaded from [here](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip).
 
-In this report, we describe a first exploratory analysis of the raw data. The data contains text in English, German, Russian, and Finnish, but we will restrict ourselves to the English language in this project.
+In this report, we describe a first exploratory analysis of the raw data. The data contains text in English, German, Russian, and Finnish, but we will restrict ourselves to the English language in this project. The R code used to produce this report can be found in the appendix.
 
 
 ## Data size
@@ -90,11 +90,11 @@ Therefore, further analysis will be performed on a subset constructed by randoml
 The figure below compares the distributions of the length of entries (number of characters) in the various sources. Solid lines represent the complete data set, dashed lines represent sampled data.
 
 ```{r sample}
-# sample raw data
 
+# sample raw data
 set.seed(2020)
 samples <- sapply(lines, function(lns) {
-    sample(lns, length(lns) / 20, replace = FALSE)
+    sample(lns, length(lns) / 10, replace = FALSE)
 })
 
 sampleText <- rbind(
@@ -111,6 +111,7 @@ rm(list = c("lines", "samples"))
 ```
 
 ```{r graphs, message = FALSE}
+
 # character density plots
 
 # convert to long format for ggplot
@@ -125,8 +126,7 @@ ggplot(meltedChar) +
     geom_density(data = meltedSample, aes(x = characters, col = src), linetype = 2) +
     scale_color_discrete(name = "Source") +
     ggtitle("Density plot of characters per entry")
-  
-print(object.size(meltedChar), units = "MB")
+
 ```
 
 It is obvious from the plot that Twitter was sourced at a time when tweets were still limited to 140 characters. Blog posts and news articles show a broader distribution of the length of entries. 
@@ -138,8 +138,8 @@ We use the [quanteda package](http://quanteda.io) to tokenize the text corpus. F
 Tokenization is performed once including [stop words](https://en.wikipedia.org/wiki/Stop_word), and a second time excluding all stop words (the list of stop words used can be found in the appendix).
 
 ```{r tokenize, message=FALSE, eval=TRUE}
-# tokenize 
 
+# tokenize 
 tokens_all <- tokens(sampleText$txt,
                  remove_punct = TRUE,
                  remove_symbols = TRUE,
@@ -148,12 +148,10 @@ tokens_all <- tokens(sampleText$txt,
 
 tokens_nosw <- tokens_remove(tokens_all, stopwords("english"))
 
-print(object.size(tokens_all), units = "MB")
-print(object.size(tokens_nosw), units = "MB")
-
 ```
 
 ```{r frequencyplot, eval=TRUE}
+
 # functions for computing/plotting token frequencies
 
 token_freq <- function(tokens) {
@@ -191,6 +189,7 @@ onceFraction <- function(tk_freq) {
 ```
 
 ```{r unigrams, eval=TRUE}
+
 # unigrams
 
 tkfreq.uni <- token_freq(tokens_all)
@@ -211,8 +210,6 @@ minIdx_nonStopword <- min(which(!(tkfreq.uni$feature %in% stopwords("english")))
 corpusCov.uni <- corpusCoverage(tkfreq.uni)
 onceFrac.uni <- onceFraction(tkfreq.uni)
 
-print(object.size(tkfreq.uni), units = "MB")
-print(object.size(uniplot.fr), units = "MB")
 ```
 
 The corpus contains a total of `r format(totalTokens, big.mark=" ")` words, composed from `r format(nTokens, big.mark=" ")` unique words.
@@ -222,6 +219,7 @@ Since they account for only `r percent(nOccurOnce/totalTokens, digits=1)` of all
 The figure below shows the 20 most frequent words in the corpus.
 
 ```{r unigramPlot, eval=TRUE}
+
 # plot unigrams
 grid.arrange(uniplot.fr, noswplot.fr, ncol = 2, top = "Most Frequent Words")
 ```
@@ -233,37 +231,43 @@ The first non-stop word, "`r tkfreq.uni$feature[minIdx_nonStopword]`", is ranked
 
 ## Bi- and Trigrams
 
-The plot below displays the 20 most frequent Bi- and Trigrams.
+```{r bigrams, eval=TRUE}
 
-```{r bi-tri-grams, eval=TRUE}
-# Bi- and trigrams
-
+# Bigrams
 tk.bi <- tokens_ngrams(tokens_all, n = 2, concatenator = " ")
 tkfreq.bi <- token_freq(tk.bi)
 biplot <- freqPlot(tkfreq.bi, 20, xlab = "", title = "Bigrams")
 
 corpusCov.bi <- corpusCoverage(tkfreq.bi)
 onceFrac.bi <- onceFraction(tkfreq.bi)
+ngrams.bi <- tail(tkfreq.bi$cumulFreq, 1)
 
-print(object.size(tkfreq.bi), units = "MB")
-print(object.size(tk.bi), units = "MB")
 rm(list = c("tk.bi", "tkfreq.bi"))
+```
 
+```{r trigrams, eval=TRUE}
+
+# Trigrams
 tk.tri <- tokens_ngrams(tokens_all, n = 3, concatenator = " ")
 tkfreq.tri <- token_freq(tk.tri)
 triplot <- freqPlot(tkfreq.tri, 20, xlab = "", title = "Trigrams")
 
 corpusCov.tri <- corpusCoverage(tkfreq.tri)
 onceFrac.tri <- onceFraction(tkfreq.tri)
+ngrams.tri <- tail(tkfreq.tri$cumulFreq, 1)
 
-print(object.size(tkfreq.tri), units = "MB")
 rm(list = c("tk.tri", "tkfreq.tri"))
+```
 
+In total, there are `r format(ngrams.bi, big.mark=" ")` bigrams and `r format(ngrams.tri, big.mark=" ")` trigrams in the corpus.
+The plot below displays the 20 most frequent bi- and trigrams.
+
+```{r bitrigramplot, eval=TRUE}
 grid.arrange(biplot, triplot, ncol = 2, top = "2- and 3-grams including stop words")
 ```
 
 It is interesting to observe that the most frequent bigrams are composed entirely from stop words.
-Many of the trigrams, on the other hand, contain one (e.g., "thanks for the") or even two ("the first time") non-stop words. 
+Many of the trigrams, on the other hand, contain one (e.g., "thanks for the") or even two ("looking forward to") non-stop words. 
 It remains to be seen if this feature of trigrams can be exploited in the predictive model.
 
 ## Corpus coverage by n-grams
@@ -289,6 +293,18 @@ kable(kable_df,
 
 ```
 
+## Modeling strategy
+
+The plan is to use an n-gram model to predict the next word based on the previous 1, 2, or 3 words. 
+The model will exclude words that occur only once in the corpus (or less than n times, where n will need to be determined).
+First, the user is highly unlikely to actually want to type such a rare word (and our odds of predicting it correctly are minuscule), and second and more important, it will significantly reduce the size of our model.
+Using a smaller number of 1-grams will also facilitate the creation of n-grams, since memory requirements increase strongly with n, and memory appears to be the limiting factor on the laptop used to create this work.
+
+The analysis presented here so far suggest that 3-grams might be useful to predict the third word from 2-grams in common expressions such as "a lot of", "thank you for", or "as well as".
+
+In this investigation, we have not looked at 4-grams and skip-grams, and we will have to see if they help to improve the model.
+The limiting factor in the creation of n-grams (with `n > 2`) and skip-grams appears to be memory, so the we will likely have to split the raw data into manageable chunks and combine the resulting n-grams in a suitable way.
+
 ## Appendix
 
 ### Stop words
@@ -297,5 +313,6 @@ kable(kable_df,
 sort(stopwords("english"))
 ```
 
-
 ### R code
+
+```{r allcode, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
