@@ -21,58 +21,69 @@ upper <- pmin(lower + chunksize - 1, nlines)
 print(lower)
 print(upper)
 
-
-dts <- lapply(1:length(lower), function(i) {
+# tokenize
+all_tokens <- lapply(1:length(lower), function(i) {
     print(paste("Tokenize", i, sep = " "))
-    all_tokens <- tokens(
+    tokens(
         txt[lower[i]:upper[i]],
         remove_punct = FALSE,
         remove_symbols = TRUE,
         remove_numbers = TRUE,
         remove_url = TRUE,
     )
-    
-    tokenFreq.uni <- dfm(all_tokens, tolower = FALSE) %>%
-        textstat_frequency()
-    
-    unigram <- data.table(
-        token = tokenFreq.uni$feature,
-        freq = tokenFreq.uni$frequency)
-    
-    print(paste("Bigram", i, sep = " "))
-    bitoken <- tokens_ngrams(all_tokens, n = 2, concatenator = " ")
-    tokenfreq.bi <- dfm(bitoken, tolower = FALSE) %>%
-        textstat_frequency()
-    
-    bigram <- data.table(
-        token = tokenfreq.bi$feature,
-        freq = tokenfreq.bi$frequency
-    )
-    
-    c(unigram, bigram)
 })
 
-#dtsum <- dts[, .(freq = sum(freq)), by = token]
+print(object.size(all_tokens), units = "MB")
 
-# print("Bigrams")
-# bigrams <- tokens_ngrams(all_tokens, n = 2, concatenator = "_")
-# tokenFreq.bi <- dfm(bigrams, tolower = FALSE) %>%
-#     textstat_frequency()
-# 
-# bigram.dt <- data.table(
-#     token = tokenFreq.bi$feature,
-#     freq = tokenFreq.bi$frequency
-# )
-# 
-# 
-# print("Trigrams")
-# trigrams <- tokens_ngrams(all_tokens, n = 3, concatenator = "_")
-# tokenFreq.tri <- dfm(trigrams, tolower = FALSE) %>%
-#     textstat_frequency()
-# 
-# trigram.dt <- data.table(
-#     token = tokenFreq.tri$feature,
-#     freq = tokenFreq.tri$frequency
-# )
-# 
+# unigrams    
+unigrams <- rbindlist(lapply(all_tokens, function(tokens) {
+    print("Unigrams")
+    
+    tokenFreq.uni <- dfm(tokens, tolower = FALSE) %>%
+        textstat_frequency()
+    
+    data.table(
+        token = tokenFreq.uni$feature,
+        freq = tokenFreq.uni$frequency)
+}))[
+    , .(freq = sum(freq)), by = token
+    ][
+        freq > 1, 
+    ]
+print(object.size(unigrams), units = "MB")
+
+# bigrams
+bigrams <- rbindlist(lapply(all_tokens, function(tokens) {
+    print("Bigram")
+    
+    tk <- tokens_ngrams(tokens, n = 2, concatenator = " ")
+    tkfreq <- dfm(tk, tolower = FALSE) %>%
+        textstat_frequency()
+    
+    data.table(token = tkfreq$feature,
+               freq = tkfreq$frequency)
+}))[
+    , .(freq = sum(freq)), by = token
+    ][
+        freq > 1,
+    ]
+print(object.size(bigrams), units = "MB")
+
+# trigrams
+trigrams <- rbindlist(lapply(all_tokens, function(tokens) {
+    print("Trigram")
+    
+    tk <- tokens_ngrams(tokens, n = 3, concatenator = " ")
+    tkfreq <- dfm(tk, tolower = FALSE) %>%
+        textstat_frequency()
+    
+    data.table(token = tkfreq$feature,
+               freq = tkfreq$frequency)
+}))[
+    , .(freq = sum(freq)), by = token
+][
+    freq > 1,
+]
+print(object.size(trigrams), units = "MB")
+
 
