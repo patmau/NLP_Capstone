@@ -2,18 +2,17 @@ library(dplyr)
 library(data.table)
 library(quanteda)
 
-src <- "data/model/sample.train.csv"
+src <- "data/model/sample.train.2.csv"
 
 print("Reading file")
 con <- file(src, "r")
 txt <- readLines(con)
 close(con)
 print(length(txt))
-txt <- sapply(txt, function(t) { paste0("ENTRYSTART ", t) }, USE.NAMES = FALSE)
 
-nlines <- 20000 #length(txt)
-chunksize <- nlines / 10
-chunksize
+nlines <- length(txt)
+chunksize <- nlines %/% 25
+print(chunksize)
 
 lower <- round(seq(1, nlines, by = chunksize))
 upper <- pmin(lower + chunksize - 1, nlines)
@@ -26,12 +25,13 @@ all_tokens <- lapply(1:length(lower), function(i) {
     print(paste("Tokenize", i, sep = " "))
     tokens(
         txt[lower[i]:upper[i]],
-        remove_punct = FALSE,
+        remove_punct = TRUE,
         remove_symbols = TRUE,
         remove_numbers = TRUE,
-        remove_url = TRUE,
+        remove_url = TRUE
     )
 })
+rm(list="txt")
 
 print(object.size(all_tokens), units = "MB")
 
@@ -51,39 +51,45 @@ unigrams <- rbindlist(lapply(all_tokens, function(tokens) {
         freq > 1, 
     ]
 print(object.size(unigrams), units = "MB")
+fwrite(unigrams, file = "data/model/unigram.csv")
 
-# bigrams
-bigrams <- rbindlist(lapply(all_tokens, function(tokens) {
-    print("Bigram")
-    
-    tk <- tokens_ngrams(tokens, n = 2, concatenator = " ")
-    tkfreq <- dfm(tk, tolower = FALSE) %>%
-        textstat_frequency()
-    
-    data.table(token = tkfreq$feature,
-               freq = tkfreq$frequency)
-}))[
-    , .(freq = sum(freq)), by = token
+# n-gram function (n > 1)
+ngrams <- function(tokens_list, n, concatenator, cutFrequency) {
+    rbindlist(lapply(tokens_list, function(tokens) {
+        print(paste(n, "-grams", sep = ""))
+        
+        tk <- tokens_ngrams(tokens, n = n, concatenator = concatenator)
+        tkfreq <- dfm(tk, tolower = FALSE) %>%
+            textstat_frequency()
+        
+        data.table(token = tkfreq$feature,
+                   freq = tkfreq$frequency)
+    }))[
+        , .(freq = sum(freq)), by = token
     ][
-        freq > 1,
-    ]
+        freq > cutFrequency, ]
+}
+
+
+bigrams <- ngrams(all_tokens, n = 2, concatenator = " ", cutFrequency = 3)
 print(object.size(bigrams), units = "MB")
+fwrite(bigrams, file = "data/model/bigram.csv")
+rm(list="bigrams")
 
-# trigrams
-trigrams <- rbindlist(lapply(all_tokens, function(tokens) {
-    print("Trigram")
-    
-    tk <- tokens_ngrams(tokens, n = 3, concatenator = " ")
-    tkfreq <- dfm(tk, tolower = FALSE) %>%
-        textstat_frequency()
-    
-    data.table(token = tkfreq$feature,
-               freq = tkfreq$frequency)
-}))[
-    , .(freq = sum(freq)), by = token
-][
-    freq > 1,
-]
+trigrams <- ngrams(all_tokens, n = 3, concatenator = " ", cutFrequency = 2)
 print(object.size(trigrams), units = "MB")
+fwrite(trigrams, file = "data/model/trigram.csv")
+rm(list="trigrams")
 
+tetragrams <- ngrams(all_tokens, n = 4, concatenator = " ", cutFrequency = 1)
+print(object.size(tetragrams), units = "MB")
+fwrite(tetragrams, file = "data/model/tetragram.csv")
+rm(list="tetragrams")
+
+pentagrams <- ngrams(all_tokens, n = 5, concatenator = " ", cutFrequency = 1)
+print(object.size(pentagrams), units = "MB")
+fwrite(pentagrams, file = "data/model/pentagram.csv")
+rm(list="pentagrams")
+
+test.tri <- fread(file = "data/model/trigram.csv", header = TRUE)
 
