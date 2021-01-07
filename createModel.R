@@ -48,10 +48,11 @@ unigrams <- rbindlist(lapply(all_tokens, function(tokens) {
 }))[
     , .(freq = sum(freq)), by = token
     ][
-        freq > 1, 
+        freq > 4, 
     ]
 print(object.size(unigrams), units = "MB")
-fwrite(unigrams, file = "data/model/unigram.csv")
+setkey(unigrams, token)
+#fwrite(unigrams, file = "data/model/unigram.csv")
 
 # n-gram function (n > 1)
 ngrams <- function(tokens_list, n, concatenator, cutFrequency) {
@@ -73,23 +74,28 @@ ngrams <- function(tokens_list, n, concatenator, cutFrequency) {
 
 bigrams <- ngrams(all_tokens, n = 2, concatenator = " ", cutFrequency = 3)
 print(object.size(bigrams), units = "MB")
-fwrite(bigrams, file = "data/model/bigram.csv")
-rm(list="bigrams")
+setkey(bigrams, token)
+# fwrite(bigrams, file = "data/model/bigram.csv")
+# rm(list="bigrams")
 
 trigrams <- ngrams(all_tokens, n = 3, concatenator = " ", cutFrequency = 2)
 print(object.size(trigrams), units = "MB")
-fwrite(trigrams, file = "data/model/trigram.csv")
-rm(list="trigrams")
-
+setkey(trigrams, token)
+# fwrite(trigrams, file = "data/model/trigram.csv")
+# rm(list="trigrams")
+rm
 tetragrams <- ngrams(all_tokens, n = 4, concatenator = " ", cutFrequency = 1)
 print(object.size(tetragrams), units = "MB")
-fwrite(tetragrams, file = "data/model/tetragram.csv")
-rm(list="tetragrams")
+setkey(tetragrams, token)
+# fwrite(tetragrams, file = "data/model/tetragram.csv")
+# rm(list="tetragrams")
 
 pentagrams <- ngrams(all_tokens, n = 5, concatenator = " ", cutFrequency = 1)
 print(object.size(pentagrams), units = "MB")
-fwrite(pentagrams, file = "data/model/pentagram.csv")
-rm(list="pentagrams")
+setkey(pentagrams, token)
+# fwrite(pentagrams, file = "data/model/pentagram.csv")
+# rm(list="pentagrams")
 
-test.tri <- fread(file = "data/model/trigram.csv", header = TRUE)
+ngrams <- list(unigrams, bigrams, trigrams, tetragrams, pentagrams)
+saveRDS(ngrams, "data/model/ngrams.rds")
 
