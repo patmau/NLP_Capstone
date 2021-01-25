@@ -18,7 +18,7 @@ for (n in 1:5) {
     print(n)
     ngrams[[n]][, prediction := word(token, start = -1)][, stopword := prediction %in% stopwords()]
     ngrams[[n]]$token = word(ngrams[[n]]$token, start = -n, end = -pmin(2, length(ngrams[[n]]$token)))
-    setkey(ngrams, token)
+    setkey(ngrams[[n]], token)
 }
 
 saveRDS(ngrams, "data/model/predictionModel.rds")

@@ -23,13 +23,14 @@ print(upper)
 # tokenize
 all_tokens <- lapply(1:length(lower), function(i) {
     print(paste("Tokenize", i, sep = " "))
+    tokens_remove(
     tokens(
         txt[lower[i]:upper[i]],
         remove_punct = TRUE,
         remove_symbols = TRUE,
         remove_numbers = TRUE,
         remove_url = TRUE
-    )
+    ), pattern = stopwords("english"))
 })
 rm(list="txt")
 
@@ -48,14 +49,14 @@ unigrams <- rbindlist(lapply(all_tokens, function(tokens) {
 }))[
     , .(freq = sum(freq)), by = token
     ][
-        freq > 4, 
+        freq > 3, 
     ]
 print(object.size(unigrams), units = "MB")
 setkey(unigrams, token)
 #fwrite(unigrams, file = "data/model/unigram.csv")
 
 # n-gram function (n > 1)
-ngrams <- function(tokens_list, n, concatenator, cutFrequency) {
+ngrams <- function(tokens_list, n, concatenator, cutFrequency = 0) {
     rbindlist(lapply(tokens_list, function(tokens) {
         print(paste(n, "-grams", sep = ""))
         
@@ -72,13 +73,13 @@ ngrams <- function(tokens_list, n, concatenator, cutFrequency) {
 }
 
 
-bigrams <- ngrams(all_tokens, n = 2, concatenator = " ", cutFrequency = 3)
+bigrams <- ngrams(all_tokens, n = 2, concatenator = " ", cutFrequency = 4)
 print(object.size(bigrams), units = "MB")
 setkey(bigrams, token)
 # fwrite(bigrams, file = "data/model/bigram.csv")
 # rm(list="bigrams")
 
-trigrams <- ngrams(all_tokens, n = 3, concatenator = " ", cutFrequency = 2)
+trigrams <- ngrams(all_tokens, n = 3, concatenator = " ", cutFrequency = 1)
 print(object.size(trigrams), units = "MB")
 setkey(trigrams, token)
 # fwrite(trigrams, file = "data/model/trigram.csv")
